@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Corrida Arcade (1–20 níveis)</title>
+  <style>
+    :root {
+      --track-width: 360px;
+      --lane-width: 120px;
+      --game-height: 600px;
+      --car-width: 72px;
+      --car-height: 112px;
+      --obstacle-width: 68px;
+      --obstacle-height: 90px;
+      --line-gap: 60px;
+      --scroll-speed: 0.6s;
+    }
+    @media (max-width: 420px) {
+      :root {
+        --track-width: 300px;
+        --lane-width: 100px;
+        --car-width: 62px;
+        --car-height: 100px;
+        --obstacle-width: 60px;
+        --obstacle-height: 82px;
+        --line-gap: 54px;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #0b0f1a;
+      color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* HUD com espaçamento claro entre seletor e botão */
+    .hud {
+      width: var(--track-width);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 14px 0;
+      align-items: center;
+    }
+    .hud-left {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .hud-right {
+      display: flex;
+      justify-content: flex-end;
+      gap: 14px; /* separa o botão Iniciar do seletor de cor */
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      background: #152238;
+      border: 1px solid #2b3a57;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .select {
+      appearance: none;
+      background: #203049;
+      border: 1px solid #2b3a57;
+      color: #eaf2ff;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn {
+      background: #1c7ed6;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(28,126,214,0.35);
+    }
+    .btn:active { transform: scale(0.98); }
+
+    .game {
+      position: relative;
+      width: var(--track-width);
+      height: var(--game-height);
+      overflow: hidden;
+      border-radius: 14px;
+      background:
+        linear-gradient(#2b3a57 0 0) padding-box,
+        radial-gradient(150% 100% at 50% 0%, #0b0f1a, #091429) border-box;
+      border: 2px solid #3f4b6b;
+      touch-action: none;
+    }
+
+    /* Faixas */
+    .lane {
+      position: absolute;
+      top: 0;
+      width: var(--lane-width);
+      height: 100%;
+      border-left: 2px dashed rgba(255,255,255,0.25);
+      border-right: 2px dashed rgba(255,255,255,0.25);
+    }
+    .lane:nth-child(1) { left: 0; }
+    .lane:nth-child(2) { left: var(--lane-width); }
+    .lane:nth-child(3) { left: calc(var(--lane-width) * 2); }
+
+    /* Linhas rolando */
+    .track-lines {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(
+          to bottom,
+          rgba(255,255,255,0.15) 0 22px,
+          transparent 22px var(--line-gap)
+        );
+      background-size: 100% var(--line-gap);
+      animation: scroll var(--scroll-speed) linear infinite;
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+    @keyframes scroll {
+      to { background-position-y: var(--line-gap); }
+    }
+
+    /* Carro do jogador com variantes de cor */
+    .car {
+      position: absolute;
+      bottom: 24px;
+      left: calc(var(--lane-width) * 1 + (var(--lane-width) - var(--car-width)) / 2);
+      width: var(--car-width);
+      height: var(--car-height);
+      border-radius: 10px;
+      box-shadow:
+        0 8px 18px rgba(0,0,0,0.45),
+        inset 0 0 10px rgba(255,255,255,0.18);
+      transition: left 0.12s ease;
+    }
+    .car::before {
+      content: "";
+      position: absolute;
+      top: 12px; left: 10px; right: 10px;
+      height: 34px;
+      border-radius: 6px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.25), rgba(255,255,255,0.06));
+    }
+    .car::after {
+      content: "";
+      position: absolute;
+      bottom: 10px; left: 10px; right: 10px;
+      height: 18px;
+      border-radius: 6px;
+      background: linear-gradient(180deg, #ff6b6b, #941b0c);
+      box-shadow: 0 0 12px rgba(255,107,107,0.6);
+    }
+    .wheel {
+      position: absolute;
+      width: 12px; height: 22px;
+      background: #1e1e1e;
+      border-radius: 4px;
+      box-shadow: inset 0 0 4px rgba(255,255,255,0.1);
+    }
+    .wheel.left { left: -8px; }
+    .wheel.right { right: -8px; }
+    .wheel.front { top: 24px; }
+    .wheel.back { bottom: 24px; }
+
+    /* Cores do carro do jogador */
+    .car-red   { background: linear-gradient(180deg, #ff4d6d, #d00000); }
+    .car-blue  { background: linear-gradient(180deg, #4dabf7, #1864ab); }
+    .car-green { background: linear-gradient(180deg, #51cf66, #2b8a3e); }
+    .car-yellow{ background: linear-gradient(180deg, #ffd43b, #fab005); }
+    .car-purple{ background: linear-gradient(180deg, #da77f2, #7048e8); }
+
+    /* Obstáculos: mesma cor para clareza */
+    .obstacle {
+      position: absolute;
+      top: -100px;
+      width: var(--obstacle-width);
+      height: var(--obstacle-height);
+      left: 0;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #495057, #212529);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.5);
+      outline: 2px solid #6c757d;
+      animation: fall 3.6s linear forwards; /* ajustado no JS */
+    }
+    .obstacle::before {
+      content: "";
+      position: absolute;
+      top: 8px; left: 8px; right: 8px; height: 24px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08);
+    }
+    @keyframes fall {
+      to { transform: translateY(var(--game-height)); }
+    }
+
+    /* Overlay Game Over */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(2px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .overlay.show { opacity: 1; pointer-events: auto; }
+    .card {
+      background: #152238;
+      border: 1px solid #2b3a57;
+      padding: 16px 20px;
+      border-radius: 12px;
+      width: min(94vw, 360px);
+    }
+    .card h2 { margin: 0 0 8px; }
+    .card p { margin: 0 0 12px; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div class="hud-left">
+      <div class="badge">Pontuação: <span id="score">0</span></div>
+      <div class="badge">Nível: <span id="level">1</span></div>
+    </div>
+    <div class="hud-right">
+      <select id="carSelect" class="select" title="Selecione a cor do carro">
+        <option value="car-red">Vermelho</option>
+        <option value="car-blue">Azul</option>
+        <option value="car-green">Verde</option>
+        <option value="car-yellow">Amarelo</option>
+        <option value="car-purple">Roxo</option>
+      </select>
+      <button class="btn" id="startBtn">Iniciar</button>
+    </div>
+  </div>
+
+  <div class="game" id="game">
+    <div class="lane"></div>
+    <div class="lane"></div>
+    <div class="lane"></div>
+    <div class="track-lines"></div>
+
+    <!-- Carro do jogador -->
+    <div class="car car-red" id="car" aria-label="Carro do jogador">
+      <div class="wheel left front"></div>
+      <div class="wheel right front"></div>
+      <div class="wheel left back"></div>
+      <div class="wheel right back"></div>
+    </div>
+
+    <!-- Overlay -->
+    <div class="overlay" id="overlay">
+      <div class="card">
+        <h2>Game Over</h2>
+        <p>Pontuação: <strong id="finalScore">0</strong></p>
+        <p>Nível alcançado: <strong id="finalLevel">1</strong></p>
+        <button class="btn" id="restartBtn">Reiniciar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Elementos
+    const game = document.getElementById('game');
+    const car = document.getElementById('car');
+    const scoreEl = document.getElementById('score');
+    const levelEl = document.getElementById('level');
+    const overlay = document.getElementById('overlay');
+    const finalScoreEl = document.getElementById('finalScore');
+    const finalLevelEl = document.getElementById('finalLevel');
+    const startBtn = document.getElementById('startBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const carSelect = document.getElementById('carSelect');
+
+    // Estado
+    const lanes = [0, 1, 2];
+    let currentLane = 1;
+    let running = false;
+    let score = 0;
+    let level = 1;
+    let spawnTimer = 0;
+    let lastTs = 0;
+    const obstacles = new Set();
+
+    // Helpers
+    function cssNum(varName) {
+      return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(varName));
+    }
+    function laneX(laneIndex) {
+      const laneWidth = cssNum('--lane-width');
+      const carWidth = cssNum('--car-width');
+      return laneIndex * laneWidth + (laneWidth - carWidth) / 2;
+    }
+    function moveCarToLane(index) {
+      currentLane = Math.max(0, Math.min(2, index));
+      car.style.left = `${laneX(currentLane)}px`;
+    }
+
+    // Troca cor do carro
+    carSelect.addEventListener('change', () => {
+      car.className = 'car ' + carSelect.value;
+      car.innerHTML = `
+        <div class="wheel left front"></div>
+        <div class="wheel right front"></div>
+        <div class="wheel left back"></div>
+        <div class="wheel right back"></div>`;
+    });
+
+    // Controles teclado
+    window.addEventListener('keydown', (e) => {
+      if (!running) return;
+      const k = e.key.toLowerCase();
+      if (k === 'arrowleft' || k === 'a') moveCarToLane(currentLane - 1);
+      if (k === 'arrowright' || k === 'd') moveCarToLane(currentLane + 1);
+    });
+
+    // Controles toque
+    let touchStartX = null;
+    game.addEventListener('touchstart', (e) => {
+      touchStartX = e.changedTouches[0].clientX;
+    }, { passive: true });
+    game.addEventListener('touchend', (e) => {
+      if (!running || touchStartX === null) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      if (dx < -30) moveCarToLane(currentLane - 1);
+      if (dx > 30) moveCarToLane(currentLane + 1);
+      touchStartX = null;
+    });
+
+    // Dificuldade
+    function obstacleSpeedFromLevel(lv) {
+      return Math.max(1.2, 3.6 - lv * 0.12); // s
+    }
+    function spawnIntervalFromLevel(lv) {
+      return Math.max(380, 950 - lv * 25); // ms
+    }
+
+    // Spawn obstáculo (todos mesma cor)
+    function spawnObstacle() {
+      const lane = lanes[Math.floor(Math.random() * lanes.length)];
+      const el = document.createElement('div');
+      el.className = 'obstacle';
+      el.style.left = `${laneX(lane)}px`;
+      el.style.animationDuration = `${obstacleSpeedFromLevel(level)}s`;
+      game.appendChild(el);
+
+      const obj = { el, lane, active: true };
+      obstacles.add(obj);
+
+      el.addEventListener('animationend', () => {
+        if (obj.active) {
+          score++;
+          scoreEl.textContent = score;
+          if (score % 10 === 0 && level < 20) {
+            level++;
+            levelEl.textContent = level;
+            const s = Math.max(0.28, 0.6 - (level - 1) * 0.015);
+            document.documentElement.style.setProperty('--scroll-speed', `${s}s`);
+          }
+        }
+        el.remove();
+        obstacles.delete(obj);
+      });
+    }
+
+    // Colisão
+    function collide(a, b) {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      return !(
+        ar.right < br.left ||
+        ar.left > br.right ||
+        ar.bottom < br.top ||
+        ar.top > br.bottom
+      );
+    }
+
+    // Loop
+    function update(dt) {
+      spawnTimer += dt;
+      const interval = spawnIntervalFromLevel(level);
+      if (spawnTimer >= interval) {
+        spawnTimer = 0;
+        spawnObstacle();
+        if (level >= 12 && Math.random() < 0.15) {
+          setTimeout(spawnObstacle, 120);
+        }
+      }
+
+      for (const obj of obstacles) {
+        if (!obj.active) continue;
+        if (collide(car, obj.el)) {
+          gameOver();
+          return;
+        }
+      }
+    }
+    function loop(ts) {
+      if (!running) return;
+      if (!lastTs) lastTs = ts;
+      const dt = ts - lastTs;
+      lastTs = ts;
+      update(dt);
+      requestAnimationFrame(loop);
+    }
+
+    // Controle
+    function start() {
+      score = 0;
+      level = 1;
+      spawnTimer = 0;
+      lastTs = 0;
+      running = true;
+
+      scoreEl.textContent = score;
+      levelEl.textContent = level;
+      moveCarToLane(1);
+      obstacles.forEach(o => o.el.remove());
+      obstacles.clear();
+      overlay.classList.remove('show');
+      document.documentElement.style.setProperty('--scroll-speed', '0.6s');
+
+      requestAnimationFrame(loop);
+    }
+    function gameOver() {
+      running = false;
+      finalScoreEl.textContent = score;
+      finalLevelEl.textContent = level;
+      overlay.classList.add('show');
+    }
+
+    // Botões funcionando
+    startBtn.addEventListener('click', start);
+    restartBtn.addEventListener('click', start);
+
+    // Dica: não iniciamos automaticamente; clique em Iniciar
+  </script>
+</body>
+</html>
